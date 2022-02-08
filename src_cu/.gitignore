@@ -1,0 +1,8 @@
+_build/
+build/
+.vscode/
+*.rar
+*.ppm
+*.obj
+*.hdr
+*.png
