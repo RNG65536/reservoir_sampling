@@ -135,7 +135,7 @@ void initDefaultScene()
                     xform =
                         glm::translate(glm::mat4(1.0f), glm::vec3(x * 8.0, -3.0, y * 8.0)) * xform;
 
-                    load_mesh(g_mesh, RandInt(0, 7), "../data/bunny_1k.obj", xform);  // LGHT
+                    load_mesh(g_mesh, 0 == (x * 5 + y) % 2 ? RandInt(7, 7) : RandInt(0, 7), "../data/bunny_1k.obj", xform);  // LGHT
 
                     // int base = x + y * 5;
                     // load_mesh(g_mesh,

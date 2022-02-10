@@ -14,7 +14,13 @@ class RandInt
 public:
     RandInt(int min, int max) : min(min), max(max) {}
 
-    int next() { return min + rand() % (max - min); }
+    int next()
+    {
+        if (max > min)
+            return min + rand() % (max - min);
+        else
+            return max;
+    }
 };
 
 // class RandInt
