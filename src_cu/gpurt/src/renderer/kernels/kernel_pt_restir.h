@@ -8,7 +8,7 @@ __device__ void fix_nan(Vector3& c)
     }
 }
 
-__global__ void _kernel_pt_restir(RenderContext ctx)
+__global__ void _kernel_pt_restir(RenderContext ctx, bool use_temporal)
 {
     Vector4*&                  d_image         = ctx.d_image;
     RenderCamera&              camera          = ctx.camera;
@@ -261,9 +261,8 @@ __global__ void _kernel_pt_restir(RenderContext ctx)
                 rv = rt;
 #endif
 
-#if 1
                 // temporal reuse / static camera
-                if (total_spp > 0)
+                if (use_temporal && total_spp > 0)
                 {
                     ReservoirT<PathSample> rq = d_ps.ps_rv.back[tile_idx];
 
@@ -277,7 +276,6 @@ __global__ void _kernel_pt_restir(RenderContext ctx)
                         rv.combine_p_hat(rq, rng.next());
                     }
                 }
-#endif
 
                 rv.update_W_p_hat();
             }

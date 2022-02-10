@@ -366,11 +366,14 @@ void renderTileSplitKernel(Vector4*            th_d_image,
 
     if (renderer == 0)
     {
-        // temporal reuse
-        _kernel_pt_restir<<<iDivUp(num_active_pixels, block_size), block_size>>>(ctx);
+        bool use_temporal = false;
+        bool use_spatial  = true;
 
-#if 1
+        // temporal reuse
+        _kernel_pt_restir<<<iDivUp(num_active_pixels, block_size), block_size>>>(ctx, use_temporal);
+
         // spatial reuse
+        if (use_spatial)
         {
             for (int i = 0; i < 4; i++)
             {
@@ -379,7 +382,6 @@ void renderTileSplitKernel(Vector4*            th_d_image,
                 _swap_kernel<<<1, 1>>>();
             }
         }
-#endif
 
         _shading_kernel<<<iDivUp(num_active_pixels, block_size), block_size>>>(ctx);
     }
