@@ -8,7 +8,7 @@ __device__ void fix_nan(Vector3& c)
     }
 }
 
-__global__ void _pathtrace_splitkernel_pathtrace_restir(RenderContext ctx)
+__global__ void _kernel_pt_restir(RenderContext ctx)
 {
     Vector4*&                  d_image         = ctx.d_image;
     RenderCamera&              camera          = ctx.camera;

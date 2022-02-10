@@ -1,6 +1,6 @@
 #pragma once
 
-__global__ void _pathtrace_splitkernel_pathtrace_nee_reuse(RenderContext ctx)
+__global__ void _kernel_pt_sample_light(RenderContext ctx)
 {
     Vector4*&                  d_image         = ctx.d_image;
     RenderCamera&              camera          = ctx.camera;

@@ -1,6 +1,6 @@
 #pragma once
 
-__global__ void _pathtrace_splitkernel_pathtrace_passive(RenderContext ctx)
+__global__ void _kernel_pt_sample_brdf(RenderContext ctx)
 {
     Vector4*&     d_image = ctx.d_image;
     RenderCamera& camera  = ctx.camera;
@@ -74,24 +74,53 @@ __global__ void _pathtrace_splitkernel_pathtrace_passive(RenderContext ctx)
                 break;
             }
 
-            Vector3 sn(hit.getShadingNormal());
-
-            Vector3 phit = cr.proceed(hit.getFreeDistance());
-            Vector3 nhit(sn);
-            bool    inside = false;
-            if (dot(cr.dir, nhit) >= 0)
-            {
-                nhit = -nhit, inside = true;
-            }
-
-            Vector3 pl = phit;
-            Vector3 pr = phit;
-
             int          mat_id   = hit.getMaterialID();
             MaterialSpec material = materials.get_material(mat_id);
             Material     mtype    = material.type;
-            Vector3      mcolor   = material.color;
-            float        alpha    = 1.0f;
+            Vector3      phit     = cr.proceed(hit.getFreeDistance());
+
+            //
+            Vector3 sn(hit.getShadingNormal());
+            Vector3 gn(hit.getFaceNormal());
+
+            float scene_t = hit.getFreeDistance();
+            bool  inside;
+            bool  facing;
+            int   a    = dot(cr.dir, gn) < 0;
+            facing     = a;
+            inside     = !facing;
+            Vector3 pl = phit;
+            Vector3 pr = phit;
+
+            int b = dot(cr.dir, sn) < 0;
+            int c = dot(gn, sn) < 0;
+            // int     c = dot(gn, sn) <= 0;
+            Vector3 nhit;
+
+            // clang-format off
+            switch (a * 2 + b + c * 4)
+            {
+                default:
+                case 0: nhit = -sn; break;
+                case 1: nhit = -sn; break;
+                case 2: nhit = sn; break;
+                case 3: nhit = sn; break;
+                case 4: nhit = -sn; break;
+                case 5: nhit = sn; break;
+                case 6: nhit = -sn; break;
+                case 7: nhit = sn; break;
+            }
+            // clang-format on
+
+            Vector3 n = sn;  // shading normal
+            Vector3 nl;      // oriented normal
+            {
+                float cos_factor = dot(n, cr.dir);  // using shading normal
+                nl               = cos_factor <= 0 ? n : -n;
+            }
+
+            Vector3 mcolor = material.color;
+            colorState *= mcolor;
 
             switch (mtype)
             {
@@ -101,7 +130,7 @@ __global__ void _pathtrace_splitkernel_pathtrace_passive(RenderContext ctx)
                 {
                     if (!inside)
                     {
-                        radianceIntegral += colorState * mcolor;
+                        radianceIntegral += colorState;
                     }
                     trace_end = true;  // always terminate the path at the light vertex
                 }
@@ -114,15 +143,14 @@ __global__ void _pathtrace_splitkernel_pathtrace_passive(RenderContext ctx)
                     Frame   frame(nhit);
                     Vector3 d =
                         frame.toWorld(Vector3(cos(r1) * radius, sin(r1) * radius, sqrt(1 - r2)));
-                    cr        = Ray3(pl, d);
-                    colorState *= mcolor;
+                    cr = Ray3(pl, d);
 #else
                     // uniform hemisphere sampling
                     float   r1 = 2 * M_PI * rng.next(), z = rng.next(), r = sqrt(1.0f - z * z);
                     Frame   frame(nhit);
                     Vector3 d = frame.toWorld(Vector3(cos(r1) * r, sin(r1) * r, z));
                     cr        = Ray3(pl, d);
-                    //colorState *= mcolor * dot(nhit, d) / (M_PI * M_1_TWOPI);
+                    // colorState *= mcolor * dot(nhit, d) / (M_PI * M_1_TWOPI);
                     colorState *= mcolor * z * 2.0f;
 #endif
                 }

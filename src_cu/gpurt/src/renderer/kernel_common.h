@@ -148,6 +148,40 @@ FI Dev Vector3 light_radiance(const BVHInterface&        bvh,
                               const LightsCudaInterface& lights,
                               const Vector3&             pos,
                               const Vector3&             dir,
+                              float&                     pdfW_light)
+{
+    pdfW_light = 0.0f;  // for safety
+
+    HitInfo_Lite hit = bvh.intersect(Ray3(pos, dir), NUM_EPS, NUM_INF);
+    if (hit.getFreeDistance() >= NUM_INF)  // not hit
+    {
+        return Vector3(0.0f, 0.0f, 0.0f);
+    }
+    auto  nl        = hit.getShadingNormal();
+    auto  mat       = materials.get_material(hit.getMaterialID());
+    float cos_light = dot(nl, -dir);
+    if (cos_light < NUM_EPS || LGHT != mat.type)  // not visible
+    {
+        return Vector3(0.0f, 0.0f, 0.0f);
+    }
+
+    // if hit light
+    float t2 = hit.getFreeDistance();
+    t2 *= t2;
+
+    const uint32_t light_tri_id = hit.getTriangleID();
+    int            light_id     = lights.tri2light[light_tri_id];
+    float          pdfA_light   = lights.get_pdf(light_id);
+    pdfW_light                  = pdfA_light * t2 / cos_light;
+
+    return mat.color;
+}
+
+FI Dev Vector3 light_radiance(const BVHInterface&        bvh,
+                              const MaterialInterface&   materials,
+                              const LightsCudaInterface& lights,
+                              const Vector3&             pos,
+                              const Vector3&             dir,
                               const int                  light_id)
 {
     HitInfo_Lite hit = bvh.intersect(Ray3(pos, dir), NUM_EPS, NUM_INF);
@@ -392,3 +426,9 @@ struct camera
         y_frame = Vector3(glm::vec3(inv_view_matrix * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f)));
     }
 };
+
+FI Dev float MIS_weight(float pdfA, float pdfB) { return (pdfA) / (pdfA + pdfB); }
+
+__device__ float MIS_balance_heuristic(float a, float b) { return a / (a + b); }
+
+__device__ float MIS_power_heuristic(float a, float b) { return (a * a) / (a * a + b * b); }

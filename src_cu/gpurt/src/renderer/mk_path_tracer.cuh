@@ -296,7 +296,7 @@ void rendererInitialize(const TriangleMesh&              mesh,
 
 int renderer = 0;
 
-void setRenderer(int idx) { renderer = idx % 3; }
+void setRenderer(int idx) { renderer = idx % 4; }
 
 void renderTileSplitKernel(Vector4*            th_d_image,
                            int                 width,
@@ -345,8 +345,7 @@ void renderTileSplitKernel(Vector4*            th_d_image,
 
     if (renderer == 0)
     {
-        _pathtrace_splitkernel_pathtrace_restir<<<iDivUp(num_active_pixels, block_size),
-                                                  block_size>>>(ctx);
+        _kernel_pt_restir<<<iDivUp(num_active_pixels, block_size), block_size>>>(ctx);
 
         if (1)
         {
@@ -362,13 +361,15 @@ void renderTileSplitKernel(Vector4*            th_d_image,
     }
     else if (renderer == 1)
     {
-        _pathtrace_splitkernel_pathtrace_passive<<<iDivUp(num_active_pixels, block_size),
-                                                   block_size>>>(ctx);
+        _kernel_pt_sample_brdf<<<iDivUp(num_active_pixels, block_size), block_size>>>(ctx);
     }
     else if (renderer == 2)
     {
-        _pathtrace_splitkernel_pathtrace_nee_reuse<<<iDivUp(num_active_pixels, block_size),
-                                                     block_size>>>(ctx);
+        _kernel_pt_sample_light<<<iDivUp(num_active_pixels, block_size), block_size>>>(ctx);
+    }
+    else if (renderer == 3)
+    {
+        _kernel_pt_sample_mis<<<iDivUp(num_active_pixels, block_size), block_size>>>(ctx);
     }
 }
 
