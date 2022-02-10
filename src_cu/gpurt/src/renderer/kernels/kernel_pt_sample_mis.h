@@ -260,7 +260,6 @@ __global__ void _kernel_pt_sample_mis(RenderContext ctx)
                             constexpr float prob_brdf = 1.0f - prob_light;
 
                             if (rng.next() < prob_light)
-                            // if (0)
                             {
                                 int     light_id;
                                 float   pdfW_light;

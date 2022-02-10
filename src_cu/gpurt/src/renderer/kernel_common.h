@@ -182,6 +182,43 @@ FI Dev Vector3 light_radiance(const BVHInterface&        bvh,
                               const LightsCudaInterface& lights,
                               const Vector3&             pos,
                               const Vector3&             dir,
+                              Vector3&                   pos_on_light,
+                              Vector3&                   nl_on_light,
+                              float&                     pdfW_light,
+                              int&                       light_id)
+{
+    pdfW_light = 0.0f;  // for safety
+
+    HitInfo_Lite hit = bvh.intersect(Ray3(pos, dir), NUM_EPS, NUM_INF);
+
+    float hit_t = hit.getFreeDistance();
+    if (hit_t >= NUM_INF)  // not hit
+    {
+        return Vector3(0.0f, 0.0f, 0.0f);
+    }
+    nl_on_light     = hit.getShadingNormal();
+    auto  mat       = materials.get_material(hit.getMaterialID());
+    float cos_light = dot(nl_on_light, -dir);
+    if (cos_light < NUM_EPS || LGHT != mat.type)  // not visible
+    {
+        return Vector3(0.0f, 0.0f, 0.0f);
+    }
+
+    // if hit light
+    pos_on_light                = pos + dir * hit_t;
+    const uint32_t light_tri_id = hit.getTriangleID();
+    light_id                    = lights.tri2light[light_tri_id];
+    float pdfA_light            = lights.get_pdf(light_id);
+    pdfW_light                  = pdfA_light * hit_t * hit_t / cos_light;
+
+    return mat.color;
+}
+
+FI Dev Vector3 light_radiance(const BVHInterface&        bvh,
+                              const MaterialInterface&   materials,
+                              const LightsCudaInterface& lights,
+                              const Vector3&             pos,
+                              const Vector3&             dir,
                               const int                  light_id)
 {
     HitInfo_Lite hit = bvh.intersect(Ray3(pos, dir), NUM_EPS, NUM_INF);

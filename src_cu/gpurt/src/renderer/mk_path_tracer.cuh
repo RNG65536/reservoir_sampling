@@ -93,6 +93,8 @@ static Vector4* g_tile_buffer = nullptr;
 
 #define CLAMP_ZERO 0
 
+#define SAMPLE_LIGHT_ONLY 0
+
 struct PathSample
 {
     Vector3 hit_p;
@@ -108,6 +110,7 @@ __device__ float to_gray(const Vector3& c) { return c.x * 0.3f + c.y * 0.6f + c.
 // unshadowed path contribution
 __device__ Vector3 shade_path(const PathSample& path)
 {
+#if SAMPLE_LIGHT_ONLY  // for reservoir update using pdfA
     Vector3 c(0, 0, 0);
 
     Vector3 dist      = path.light_p - path.hit_p;
@@ -124,6 +127,24 @@ __device__ Vector3 shade_path(const PathSample& path)
         c = G * R * E;
     }
     return c;
+#else
+    Vector3 c(0, 0, 0);
+
+    Vector3 dist      = path.light_p - path.hit_p;
+    Vector3 light_dir = normalize(dist);
+
+    float cos_hit   = dot(path.hit_nl, light_dir);
+    float cos_light = dot(path.light_nl, -light_dir);
+    float G         = cos_hit;
+    if (cos_hit > 0 && cos_light > 0)
+    {
+        Vector3 R = path.hit_c * M_1_PI;
+        Vector3 E = path.light_e;
+
+        c = G * R * E;
+    }
+    return c;
+#endif
 }
 
 // unshadowed path contribution
@@ -345,9 +366,11 @@ void renderTileSplitKernel(Vector4*            th_d_image,
 
     if (renderer == 0)
     {
+        // temporal reuse
         _kernel_pt_restir<<<iDivUp(num_active_pixels, block_size), block_size>>>(ctx);
 
-        if (1)
+#if 1
+        // spatial reuse
         {
             for (int i = 0; i < 4; i++)
             {
@@ -356,6 +379,7 @@ void renderTileSplitKernel(Vector4*            th_d_image,
                 _swap_kernel<<<1, 1>>>();
             }
         }
+#endif
 
         _shading_kernel<<<iDivUp(num_active_pixels, block_size), block_size>>>(ctx);
     }

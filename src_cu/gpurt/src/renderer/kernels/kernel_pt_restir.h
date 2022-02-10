@@ -134,6 +134,8 @@ __global__ void _kernel_pt_restir(RenderContext ctx)
 
                     for (int i = 0; i < M; i++)
                     {
+#if SAMPLE_LIGHT_ONLY
+                        // sample light only
                         int     light_id;
                         float   pdfW_light;
                         Vector3 light_sampled_dir;
@@ -161,6 +163,88 @@ __global__ void _kernel_pt_restir(RenderContext ctx)
 
                         float w = p_hat(p, CLAMP_ZERO);
                         rt.update(p, w / lights.get_pdf(light_id), rng.next());
+#else
+                        // one sample MIS
+                        constexpr float prob_light = 0.5f;
+                        constexpr float prob_brdf  = 1.0f - prob_light;
+                        if (rng.next() < prob_light)
+                        {
+                            int     light_id;
+                            float   pdfW_light;
+                            Vector3 light_sampled_dir;
+                            Vector3 pos_on_light;
+                            Vector3 nl_on_light;
+                            sample_light(bvhlite,
+                                         lights,
+                                         phit,
+                                         pos_on_light,
+                                         nl_on_light,
+                                         light_sampled_dir,
+                                         pdfW_light,
+                                         light_id,
+                                         rng.next(),
+                                         rng.next(),
+                                         rng.next());
+
+                            PathSample p;
+                            p.hit_p    = phit;
+                            p.hit_nl   = nhit;
+                            p.hit_c    = material.color;
+                            p.light_p  = pos_on_light;
+                            p.light_nl = nl_on_light;
+                            p.light_e  = light_radiance(bvhlite, materials, lights, light_id);
+
+                            // invert Veach eqn 9.15
+                            float cos_theta_light   = dot(light_sampled_dir, nhit);
+                            float pdfW_brdf_virtual = cos_theta_light * M_1_PI;
+                            float mis_weight_light  = MIS_weight(
+                                pdfW_light * prob_light, pdfW_brdf_virtual * prob_brdf);  // better
+                            float effective_pdf = pdfW_light * prob_light / mis_weight_light;
+
+                            float w = p_hat(p, CLAMP_ZERO);
+                            rt.update(p, w / effective_pdf, rng.next());
+                        }
+                        else
+                        {
+                            float   r1 = 2 * M_PI * rng.next(), r2 = rng.next(), r2s = sqrt(r2);
+                            float   cos_theta = sqrt(1 - r2);
+                            Frame   frame(nhit);
+                            Vector3 brdf_sampled_dir =
+                                frame.toWorld(Vector3(cos(r1) * r2s, sin(r1) * r2s, cos_theta));
+
+                            float pdfW_brdf = cos_theta * M_1_PI;
+
+                            int     light_id;
+                            float   pdfW_light_virtual;
+                            Vector3 pos_on_light;
+                            Vector3 nl_on_light;
+                            Vector3 L_brdf_dir = light_radiance(bvhlite,
+                                                                materials,
+                                                                lights,
+                                                                phit,
+                                                                brdf_sampled_dir,
+                                                                pos_on_light,
+                                                                nl_on_light,
+                                                                pdfW_light_virtual,
+                                                                light_id);
+
+                            PathSample p;
+                            p.hit_p    = phit;
+                            p.hit_nl   = nhit;
+                            p.hit_c    = material.color;
+                            p.light_p  = pos_on_light;
+                            p.light_nl = nl_on_light;
+                            p.light_e  = L_brdf_dir;
+
+                            // invert Veach eqn 9.15
+                            float mis_weight_brdf = MIS_weight(
+                                pdfW_brdf * prob_brdf, pdfW_light_virtual * prob_light);  // better
+                            float effective_pdf = pdfW_brdf * prob_brdf / mis_weight_brdf;
+
+                            float w = p_hat(p, CLAMP_ZERO);
+                            rt.update(p, w / effective_pdf, rng.next());
+                        }
+#endif
                     }
 
                     // update W
@@ -177,6 +261,7 @@ __global__ void _kernel_pt_restir(RenderContext ctx)
                 rv = rt;
 #endif
 
+#if 1
                 // temporal reuse / static camera
                 if (total_spp > 0)
                 {
@@ -192,6 +277,7 @@ __global__ void _kernel_pt_restir(RenderContext ctx)
                         rv.combine_p_hat(rq, rng.next());
                     }
                 }
+#endif
 
                 rv.update_W_p_hat();
             }
