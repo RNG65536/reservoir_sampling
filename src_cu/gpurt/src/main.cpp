@@ -136,6 +136,13 @@ void initDefaultScene()
                         glm::translate(glm::mat4(1.0f), glm::vec3(x * 8.0, -3.0, y * 8.0)) * xform;
 
                     load_mesh(g_mesh, RandInt(0, 7), "../data/bunny_1k.obj", xform);  // LGHT
+
+                    // int base = x + y * 5;
+                    // load_mesh(g_mesh,
+                    //          // RandInt({base % 7}),
+                    //          RandInt({0, 1, 2, 3, 4, 5, 6}),
+                    //          "../data/bunny_1k.obj",
+                    //          xform);  // LGHT
                 }
             }
         }
@@ -155,8 +162,7 @@ void initDefaultScene()
 
     build_light_sampler(g_mesh, g_materials);
 
-    path_tracer::rendererInitialize(
-        g_mesh, Config::width, Config::height, g_materials, g_lights);
+    path_tracer::rendererInitialize(g_mesh, Config::width, Config::height, g_materials, g_lights);
     view_image.resize(Config::width * Config::height);
     view_image.assign(view_image.size(), Vector3(0, 0, 0));
 }
@@ -176,10 +182,7 @@ void raytracingInitialize()
     rr->reset();
 }
 
-void raytracingFinalize()
-{
-    ;
-}
+void raytracingFinalize() { ; }
 
 SimpleCamera g_cam;
 
