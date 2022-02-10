@@ -152,111 +152,224 @@ __global__ void _kernel_pt_sample_mis(RenderContext ctx)
 
                 case DIFF:
                 {
-                    // clang-format off
                     if (depth < max_depth)
                     {
+                        Vector3 local_integral(0.0f, 0.0f, 0.0f);
 
-                    Vector3 local_integral(0.0f, 0.0f, 0.0f);
-
-                    //
-                    // area lights
-                    //
-                    {
                         //
-                        // light sampling
+                        // brdf sampling
                         //
 
+                        float   r1 = 2 * M_PI * rng.next(), r2 = rng.next(), r2s = sqrt(r2);
+                        float   cos_theta = sqrt(1 - r2);
+                        Frame   frame(nhit);
+                        Vector3 brdf_sampled_dir =
+                            frame.toWorld(Vector3(cos(r1) * r2s, sin(r1) * r2s, cos_theta));
+
+#if 0  // multi sample MIS
                         if (lights.num_lights > 0)
                         {
-                            int     light_id;
-                            float   pdfW_light;
-                            Vector3 light_sampled_dir;
-                            Vector3 pos_on_light;
-                            Vector3 nl_on_light;
-                            sample_light(bvhlite,
-                                         lights,
-                                         phit,
-                                         pos_on_light,
-                                         nl_on_light,
-                                         light_sampled_dir,
-                                         pdfW_light,
-                                         light_id,
-                                         rng.next(),
-                                         rng.next(),
-                                         rng.next());
+                            //
+                            // light sampling
+                            //
 
-                            float dist_to_light = length(pos_on_light - phit);
-                            int cur_db = debugbingo;
-                            bool  shadowed      = bvhlite.intersect_any(cur_db,
-                                Ray3(phit, light_sampled_dir), NUM_EPS, dist_to_light - NUM_EPS);
-
-                            if (pdfW_light > 0 && !shadowed &&
-                                dot(nl_on_light, light_sampled_dir) < 0.0f)
                             {
-                                float cos_theta_light = dot(light_sampled_dir, nhit);
-                                if (cos_theta_light > 0.0f)
-                                {
-                                    float pdfW_brdf_virtual = cos_theta_light * M_1_PI;
-                                    //float mis_weight_light = 1.0f; // debug
-                                    float mis_weight_light = MIS_weight(pdfW_light, pdfW_brdf_virtual);
+                                int     light_id;
+                                float   pdfW_light;
+                                Vector3 light_sampled_dir;
+                                Vector3 pos_on_light;
+                                Vector3 nl_on_light;
+                                sample_light(bvhlite,
+                                             lights,
+                                             phit,
+                                             pos_on_light,
+                                             nl_on_light,
+                                             light_sampled_dir,
+                                             pdfW_light,
+                                             light_id,
+                                             rng.next(),
+                                             rng.next(),
+                                             rng.next());
 
-                                    Vector3 L_light_dir =
-                                        light_radiance(bvhlite, materials, lights, light_id);
+                                float dist_to_light = length(pos_on_light - phit);
+                                int   cur_db        = debugbingo;
+                                bool  shadowed      = bvhlite.intersect_any(cur_db,
+                                                                      Ray3(phit, light_sampled_dir),
+                                                                      NUM_EPS,
+                                                                      dist_to_light - NUM_EPS);
+
+                                if (pdfW_light > 0 && !shadowed &&
+                                    dot(nl_on_light, light_sampled_dir) < 0.0f)
+                                {
+                                    float cos_theta_light = dot(light_sampled_dir, nhit);
+                                    if (cos_theta_light > 0.0f)
+                                    {
+                                        float pdfW_brdf_virtual = cos_theta_light * M_1_PI;
+                                        // float mis_weight_light = 1.0f; // debug
+                                        float mis_weight_light =
+                                            MIS_weight(pdfW_light, pdfW_brdf_virtual);
+
+                                        Vector3 L_light_dir =
+                                            light_radiance(bvhlite, materials, lights, light_id);
+
+                                        float brdf = M_1_PI;
+                                        local_integral += L_light_dir *
+                                                          (brdf * cos_theta_light / (pdfW_light)) *
+                                                          mis_weight_light;
+                                    }
+                                }
+                            }
+
+                            // NOTE that this is cosine weighted sampleing pdf
+                            float pdfW_brdf = cos_theta * M_1_PI;
+                            last_pdf =
+                                pdfW_brdf;  // light evaluation is delayed for brdf sampled dir
+                            last_weight_light = 1.0f;  // brdf * cos / pdf
+                            last_pos          = phit;
+
+                            {
+                                float   pdfW_light_virtual;
+                                Vector3 L_brdf_dir = light_radiance(bvhlite,
+                                                                    materials,
+                                                                    lights,
+                                                                    phit,
+                                                                    brdf_sampled_dir,
+                                                                    pdfW_light_virtual);
+
+                                if (dot(L_brdf_dir, L_brdf_dir) > 0)
+                                {
+                                    // float mis_weight_brdf = 1.0f; // debug
+                                    float mis_weight_brdf =
+                                        MIS_weight(pdfW_brdf, pdfW_light_virtual);
 
                                     float brdf = M_1_PI;
-                                    local_integral += L_light_dir *
-                                                      (brdf * cos_theta_light /
-                                                       (pdfW_light)) *
-                                                      mis_weight_light;
-
+                                    local_integral += L_brdf_dir * (brdf * cos_theta / pdfW_brdf *
+                                                                    mis_weight_brdf);
                                 }
                             }
                         }
-                    }
-
-                    //
-                    // brdf sampling
-                    //
-
-                    float   r1 = 2 * M_PI * rng.next(), r2 = rng.next(), r2s = sqrt(r2);
-                    float   cos_theta = sqrt(1 - r2);
-                    Frame   frame(nhit);
-                    Vector3 brdf_sampled_dir =
-                        frame.toWorld(Vector3(cos(r1) * r2s, sin(r1) * r2s, cos_theta));
-
-                    // NOTE that this is cosine weighted sampleing pdf
-                    float pdfW_brdf = cos_theta * M_1_PI;
-                    last_pdf = pdfW_brdf;      // light evaluation is delayed for brdf sampled dir
-                    last_weight_light = 1.0f;  // brdf * cos / pdf
-                    last_pos = phit;
-
-                    if (lights.num_lights > 0)
-                    {
-                        float pdfW_light_virtual;
-                        Vector3 L_brdf_dir = light_radiance(
-                            bvhlite, materials, lights, phit, brdf_sampled_dir, pdfW_light_virtual);
-
-                        if (dot(L_brdf_dir, L_brdf_dir) > 0)
+#else  // one sample MIS
+                        if (lights.num_lights > 0)
                         {
+                            //
+                            // light sampling
+                            //
+                            // constexpr float prob_light = 0.02f;
+                            // constexpr float prob_light = 0.98f;
+                            constexpr float prob_light = 0.5f;
+                            constexpr float prob_brdf = 1.0f - prob_light;
 
-                            //float mis_weight_brdf = 1.0f; // debug
-                            float mis_weight_brdf = MIS_weight(pdfW_brdf, pdfW_light_virtual);
+                            if (rng.next() < prob_light)
+                            // if (0)
+                            {
+                                int     light_id;
+                                float   pdfW_light;
+                                Vector3 light_sampled_dir;
+                                Vector3 pos_on_light;
+                                Vector3 nl_on_light;
+                                sample_light(bvhlite,
+                                             lights,
+                                             phit,
+                                             pos_on_light,
+                                             nl_on_light,
+                                             light_sampled_dir,
+                                             pdfW_light,
+                                             light_id,
+                                             rng.next(),
+                                             rng.next(),
+                                             rng.next());
 
-                            float brdf = M_1_PI;
-                            local_integral += L_brdf_dir * (brdf * cos_theta / pdfW_brdf * mis_weight_brdf);
+                                float dist_to_light = length(pos_on_light - phit);
+                                int   cur_db        = debugbingo;
+                                bool  shadowed      = bvhlite.intersect_any(cur_db,
+                                                                      Ray3(phit, light_sampled_dir),
+                                                                      NUM_EPS,
+                                                                      dist_to_light - NUM_EPS);
+
+                                if (pdfW_light > 0 && !shadowed &&
+                                    dot(nl_on_light, light_sampled_dir) < 0.0f)
+                                {
+                                    float cos_theta_light = dot(light_sampled_dir, nhit);
+                                    if (cos_theta_light > 0.0f)
+                                    {
+                                        float pdfW_brdf_virtual = cos_theta_light * M_1_PI;
+                                        // clang-format off
+                                        // both valid ??
+                                        // float mis_weight_light = MIS_weight(pdfW_light, pdfW_brdf_virtual);
+                                        float mis_weight_light = MIS_weight(pdfW_light * prob_light, pdfW_brdf_virtual * prob_brdf);// better
+                                        // clang-format on
+
+                                        Vector3 L_light_dir =
+                                            light_radiance(bvhlite, materials, lights, light_id);
+
+                                        float brdf = M_1_PI;
+
+                                        local_integral +=
+                                            L_light_dir * ((brdf * cos_theta_light / (pdfW_light)) *
+                                                           mis_weight_light / prob_light);
+                                        // local_integral +=
+                                        //    L_light_dir * ((brdf * cos_theta_light /
+                                        //    (pdfW_light)));// debug without MIS
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // NOTE that this is cosine weighted sampleing pdf
+                                float pdfW_brdf = cos_theta * M_1_PI;
+                                last_pdf =
+                                    pdfW_brdf;  // light evaluation is delayed for brdf sampled dir
+                                last_weight_light = 1.0f;  // brdf * cos / pdf
+                                last_pos          = phit;
+
+                                float   pdfW_light_virtual;
+                                Vector3 L_brdf_dir = light_radiance(bvhlite,
+                                                                    materials,
+                                                                    lights,
+                                                                    phit,
+                                                                    brdf_sampled_dir,
+                                                                    pdfW_light_virtual);
+
+                                if (dot(L_brdf_dir, L_brdf_dir) > 0)
+                                {
+                                    // clang-format off
+                                    // both valid ??
+                                    // float mis_weight_brdf = MIS_weight(pdfW_brdf, pdfW_light_virtual);
+                                    float mis_weight_brdf = MIS_weight(pdfW_brdf * prob_brdf, pdfW_light_virtual * prob_light);// better
+                                    // clang-format on
+
+                                    float brdf = M_1_PI;
+
+                                    local_integral +=
+                                        L_brdf_dir *
+                                        ((brdf * cos_theta / pdfW_brdf * mis_weight_brdf) /
+                                         prob_brdf);
+                                    // local_integral += L_brdf_dir * ((brdf * cos_theta /
+                                    // pdfW_brdf)); // debug without MIS
+                                }
+                            }
                         }
-                    }
 
-                    //
-                    radianceIntegral += colorState * local_integral;
-                    cr = Ray3(pl, brdf_sampled_dir);
+                        // in order to compute only direct lighting when max depth > 1
+                        // TODO fix
+                        {
+                            // NOTE that this is cosine weighted sampleing pdf
+                            float pdfW_brdf = cos_theta * M_1_PI;
+                            last_pdf =
+                                pdfW_brdf;  // light evaluation is delayed for brdf sampled dir
+                            last_weight_light = 1.0f;  // brdf * cos / pdf
+                            last_pos          = phit;
+                        }
+#endif
 
+                        //
+                        radianceIntegral += colorState * local_integral;
+                        cr = Ray3(pl, brdf_sampled_dir);
                     }
                     else
                     {
                         trace_end = true;
                     }
-                    // clang-format on
                 }
                 break;
             }
